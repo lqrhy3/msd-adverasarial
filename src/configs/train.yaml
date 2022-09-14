@@ -1,7 +1,7 @@
 run_name: run_1
 num_epochs: 10000
 batch_size: 2
-data_path: ~/data
+data_dir: ~/data
 cache_num: 20
 num_workers: 8
 

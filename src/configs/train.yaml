@@ -1,9 +1,9 @@
-run_name: test_run
-num_epochs: 10
+run_name: run_1
+num_epochs: 10000
 batch_size: 2
-#data_path: ~/data
-data_dir: ~/PycharmProjects/coursework/data/raw
-cache_num: 0
+data_path: ~/data
+cache_num: 20
+num_workers: 8
 
 transform:
   train:
@@ -38,7 +38,7 @@ transform:
         keys: [image, label]
         label_key: label
 #        spatial_size: [256, 256, 126]
-        spatial_size: [64, 64, 32]
+        spatial_size: [192, 192, 96]
         pos: 2
         neg: 1
         num_samples: 3

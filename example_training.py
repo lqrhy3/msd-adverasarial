@@ -1,14 +1,3 @@
-# Copyright 2020 MONAI Consortium
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#     http://www.apache.org/licenses/LICENSE-2.0
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 import os
 import random
@@ -62,7 +51,7 @@ def create_transform(cfg_transform: Dict):
     return transform
 
 
-def run(cfg, tempdir):
+def run(cfg):
     monai.config.print_config()
     logging.basicConfig(
         level=logging.INFO,
@@ -73,36 +62,20 @@ def run(cfg, tempdir):
         ]
     )
 
-    # create a temporary directory and 40 random image, mask pairs
-    logging.info(f"generating synthetic data to {tempdir} (this may take a while)")
-    for i in range(40):
-        im, seg = create_test_image_3d(128, 128, 128, num_seg_classes=1, channel_dim=-1)
-
-        n = nib.Nifti1Image(im, np.eye(4))
-        nib.save(n, os.path.join(tempdir, f"img{i:d}.nii.gz"))
-
-        n = nib.Nifti1Image(seg, np.eye(4))
-        nib.save(n, os.path.join(tempdir, f"seg{i:d}.nii.gz"))
-
-    images = sorted(glob(os.path.join(tempdir, "img*.nii.gz")))
-    segs = sorted(glob(os.path.join(tempdir, "seg*.nii.gz")))
-    train_files = [{'image': img, 'label': seg} for img, seg in zip(images[:20], segs[:20])]
-    val_files = [{'image': img, 'label': seg} for img, seg in zip(images[-20:], segs[-20:])]
-
     # define transforms for image and segmentation
     train_transforms = create_transform(cfg['transform']['train'])
     val_transforms = create_transform(cfg['transform']['val'])
 
     # create a training data loader
-    train_ds = monai.data.Dataset(data=train_files, transform=train_transforms)
-    # train_ds = DecathlonDataset(
-    #     cfg['data_dir'],
-    #     task='Task06_Lung',
-    #     section='training',
-    #     transform=train_transforms,
-    #     download=False,
-    #     val_frac=0.1,
-    #     cache_num=cfg['cache_num'])
+    train_ds = DecathlonDataset(
+        cfg['data_dir'],
+        task='Task06_Lung',
+        section='training',
+        transform=train_transforms,
+        download=False,
+        val_frac=0.1,
+        cache_num=cfg['cache_num'])
+
     # use batch_size=2 to load images and use RandCropByPosNegLabeld to generate 2 x 4 images for network training
     train_loader = DataLoader(
         train_ds,
@@ -113,17 +86,24 @@ def run(cfg, tempdir):
         pin_memory=torch.cuda.is_available(),
     )
     # create a validation data loader
-    val_ds = monai.data.Dataset(data=val_files, transform=val_transforms)
-    # val_ds = DecathlonDataset(
-    #     cfg['data_dir'],
-    #     task='Task06_Lung',
-    #     section='validation',
-    #     transform=val_transforms,
-    #     download=False,
-    #     val_frac=0.1,
-    #     cache_num=cfg['cache_num'])
+    val_ds = DecathlonDataset(
+        cfg['data_dir'],
+        task='Task06_Lung',
+        section='validation',
+        transform=val_transforms,
+        download=False,
+        val_frac=0.1,
+        cache_num=cfg['cache_num'])
 
-    val_loader = DataLoader(val_ds, batch_size=1, num_workers=4, collate_fn=list_data_collate)
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=cfg['batch_size'],
+        num_workers=cfg['num_workers'],
+        collate_fn=list_data_collate,
+        pin_memory=torch.cuda.is_available(),
+        persistent_workers=torch.cuda.is_available()
+    )
+
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
     post_trans = Compose([Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
     # create UNet, DiceLoss and Adam optimizer
@@ -136,14 +116,12 @@ def run(cfg, tempdir):
         strides=(2, 2, 2, 2),
         num_res_units=2,
     ).to(device)
-    # loss_function = monai.losses.DiceCELoss(sigmoid=True)
-    loss_function = monai.losses.DiceLoss(sigmoid=True)
-    # optimizer = torch.optim.Adam(model.parameters(), 3e-4)
-    optimizer = torch.optim.Adam(model.parameters(), 1e-3)
+
+    loss_function = monai.losses.DiceCELoss(sigmoid=True)
+    optimizer = torch.optim.Adam(model.parameters(), 3e-4)
 
     # start a typical PyTorch training
-    # val_interval = 20
-    val_interval = 2
+    val_interval = 20
     best_metric = -1
     best_metric_epoch = -1
     epoch_loss_values = list()
@@ -152,7 +130,7 @@ def run(cfg, tempdir):
 
     for epoch in range(cfg['num_epochs']):
         logging.info('-' * 10)
-        logging.info(f'epoch {epoch + 1}/{cfg["num_epochs"]} | {datetime.now().strftime("%H:%M:%S")}')
+        logging.info(f'epoch {epoch + 1}/{cfg["num_epochs"]}')
         model.train()
         epoch_loss = 0
         step = 0
@@ -181,7 +159,7 @@ def run(cfg, tempdir):
                 val_outputs = None
                 for val_data in val_loader:
                     val_images, val_labels = val_data['image'].to(device), val_data['label'].to(device)
-                    roi_size = (96, 96, 96)
+                    roi_size = (192, 192, 96)
                     sw_batch_size = 4
                     val_outputs = sliding_window_inference(val_images, roi_size, sw_batch_size, model)
                     val_outputs = [post_trans(i) for i in decollate_batch(val_outputs)]
@@ -236,8 +214,7 @@ def main(config_name: str = typer.Argument('train.yaml', metavar='--config_name'
     cfg['data_dir'] = os.path.expanduser(cfg['data_dir'])
     cfg['artefacts_dir'] = artf_pth
 
-    with tempfile.TemporaryDirectory() as tempdir:
-        run(cfg, tempdir)
+    run(cfg)
 
 
 if __name__ == "__main__":

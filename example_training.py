@@ -1,6 +1,7 @@
 import logging
 import os
 import random
+import shutil
 import sys
 import tempfile
 from glob import glob
@@ -53,14 +54,6 @@ def create_transform(cfg_transform: Dict):
 
 def run(cfg):
     monai.config.print_config()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[
-            logging.FileHandler(os.path.join(cfg['artefacts_dir'], 'logs', 'figures.log')),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
 
     # define transforms for image and segmentation
     train_transforms = create_transform(cfg['transform']['train'])
@@ -81,7 +74,7 @@ def run(cfg):
         train_ds,
         batch_size=2,
         shuffle=True,
-        num_workers=4,
+        num_workers=cfg['train_num_workers'],
         collate_fn=list_data_collate,
         pin_memory=torch.cuda.is_available(),
     )
@@ -97,11 +90,9 @@ def run(cfg):
 
     val_loader = DataLoader(
         val_ds,
-        batch_size=cfg['batch_size'],
-        num_workers=cfg['num_workers'],
-        collate_fn=list_data_collate,
-        pin_memory=torch.cuda.is_available(),
-        persistent_workers=torch.cuda.is_available()
+        batch_size=1,
+        num_workers=cfg['val_num_workers'],
+        collate_fn=list_data_collate
     )
 
     dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
@@ -121,7 +112,7 @@ def run(cfg):
     optimizer = torch.optim.Adam(model.parameters(), 3e-4)
 
     # start a typical PyTorch training
-    val_interval = 20
+    val_interval = cfg['val_interval']
     best_metric = -1
     best_metric_epoch = -1
     epoch_loss_values = list()
@@ -199,20 +190,38 @@ def read_config(config_name: str):
     return cfg
 
 
-def main(config_name: str = typer.Argument('train.yaml', metavar='--config_name')):
+def main(config_name: str = typer.Option('train.yaml', metavar='--config_name')):
     load_dotenv()
+
     cfg_pth = os.path.join(os.environ['PROJECT_ROOT'], 'src', 'configs', config_name)
     cfg = OmegaConf.load(cfg_pth)
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.FileHandler(os.path.join(cfg['artefacts_dir'], 'logs', 'figures.log')),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
     artf_pth = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', cfg['run_name'])
     if os.path.exists(artf_pth):
-        artf_pth = '_'.join([artf_pth, str(random.randint(0, 1000))])
+        print(f'Run with name "{cfg["run_name"]}" already exists. Do you want to erase it? [yn]')
+        to_erase = input()
+        if to_erase == 'y':
+            shutil.rmtree(artf_pth)
+        else:
+            artf_pth = '_'.join([artf_pth, str(random.randint(0, 1000))])
+
+    logging.info(f'Run artefacts will be saved to {artf_pth}')
     os.makedirs(os.path.join(artf_pth, 'logs'))
     os.makedirs(os.path.join(artf_pth, 'snapshots'))
     os.makedirs(os.path.join(artf_pth, 'tb'))
 
     cfg['data_dir'] = os.path.expanduser(cfg['data_dir'])
     cfg['artefacts_dir'] = artf_pth
+    OmegaConf.save(cfg, os.path.join(artf_pth, 'train_config.yaml'))
 
     run(cfg)
 

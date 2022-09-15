@@ -6,6 +6,8 @@ import sys
 import tempfile
 from glob import glob
 from typing import Dict
+
+import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 import nibabel as nib
 import numpy as np
@@ -118,7 +120,7 @@ def run(cfg):
     ).to(device)
 
     loss_function = monai.losses.DiceCELoss(sigmoid=True)
-    optimizer = torch.optim.Adam(model.parameters(), 3e-4)
+    optimizer = torch.optim.Adam(model.parameters(), cfg['lr'])
 
     # start a typical PyTorch training
     val_interval = cfg['val_interval']
@@ -207,9 +209,9 @@ def main(config_name: str = typer.Option('train.yaml', metavar='--config-name'))
 
     artf_pth = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', cfg['run_name'])
     if os.path.exists(artf_pth):
-        print(f'Run with name "{cfg["run_name"]}" already exists. Do you want to erase it? [yn]')
-        to_erase = input()
-        if to_erase == 'y':
+        print(f'Run with name "{cfg["run_name"]}" already exists. Do you want to erase it? [yN]')
+        to_erase = input().lower()
+        if to_erase in ['y', 'yes']:
             shutil.rmtree(artf_pth)
         else:
             artf_pth = '_'.join([artf_pth, str(random.randint(0, 1000))])

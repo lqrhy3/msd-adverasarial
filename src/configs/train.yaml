@@ -2,6 +2,7 @@ run_name: run_1
 num_epochs: 10000
 val_interval: 20
 batch_size: 2
+lr: 8e-4
 
 data_dir: ~/data
 cache_num: 20
@@ -42,12 +43,13 @@ transform:
         label_key: label
 #        spatial_size: [256, 256, 126]
         spatial_size: [192, 192, 96]
-        pos: 2
+        pos: 3
         neg: 1
-        num_samples: 3
+        num_samples: 4
 
       - type: monai.transforms.ToTensord
         keys: [image, label]
+
 
   val:
     compose_fn:

@@ -54,6 +54,15 @@ def create_transform(cfg_transform: Dict):
 
 def run(cfg):
     monai.config.print_config()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.FileHandler(os.path.join(cfg['artefacts_dir'], 'logs', 'figures.log')),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logging.info(f'Run artefacts will be saved to {cfg["artefacts_dir"]}.')
 
     # define transforms for image and segmentation
     train_transforms = create_transform(cfg['transform']['train'])
@@ -190,20 +199,11 @@ def read_config(config_name: str):
     return cfg
 
 
-def main(config_name: str = typer.Option('train.yaml', metavar='--config_name')):
+def main(config_name: str = typer.Option('train.yaml', metavar='--config-name')):
     load_dotenv()
 
     cfg_pth = os.path.join(os.environ['PROJECT_ROOT'], 'src', 'configs', config_name)
     cfg = OmegaConf.load(cfg_pth)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[
-            logging.FileHandler(os.path.join(cfg['artefacts_dir'], 'logs', 'figures.log')),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
 
     artf_pth = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', cfg['run_name'])
     if os.path.exists(artf_pth):
@@ -214,7 +214,6 @@ def main(config_name: str = typer.Option('train.yaml', metavar='--config_name'))
         else:
             artf_pth = '_'.join([artf_pth, str(random.randint(0, 1000))])
 
-    logging.info(f'Run artefacts will be saved to {artf_pth}')
     os.makedirs(os.path.join(artf_pth, 'logs'))
     os.makedirs(os.path.join(artf_pth, 'snapshots'))
     os.makedirs(os.path.join(artf_pth, 'tb'))

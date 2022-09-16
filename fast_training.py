@@ -156,9 +156,8 @@ def transformations(device='cuda:0'):
 
 def train_process():
     learning_rate = 2e-4
-    val_interval = 5  # do validation for every epoch
-    # avoid the computation of meta information in random transforms
-    set_track_meta(False)
+    val_interval = 10  # do validation for every epoch
+    set_track_meta(True)
 
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -209,6 +208,9 @@ def train_process():
         dropout=0.2,
         bias=True,
     ).to(device)
+
+    # avoid the computation of meta information in random transforms
+    set_track_meta(False)
 
     post_pred = Compose([AsDiscrete(argmax=True, to_onehot=2)])
     post_label = Compose([AsDiscrete(to_onehot=2)])

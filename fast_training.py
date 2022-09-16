@@ -44,7 +44,7 @@ from monai.utils import set_determinism
 data_root = '/root/data/Task09_Spleen'
 outputs_dir = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', 'fast_run')
 if os.path.exists(outputs_dir):
-    logging.info(f'Run with name "fast_run" already exists. Do you want to erase it? [y/N]')
+    print(f'Run with name "fast_run" already exists. Do you want to erase it? [y/N]')
     to_erase = input().lower()
     if to_erase in ['y', 'yes']:
         shutil.rmtree(outputs_dir)

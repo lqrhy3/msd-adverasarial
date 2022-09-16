@@ -3,17 +3,11 @@ import os
 import random
 import shutil
 import sys
-import tempfile
-from glob import glob
 from typing import Dict
 
-import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
-import nibabel as nib
-import numpy as np
 from dotenv import load_dotenv
 import typer
-from datetime import datetime
 
 import torch
 from torch.utils.data import DataLoader
@@ -21,19 +15,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 import monai
 from monai.apps.datasets import DecathlonDataset
-from monai.data import create_test_image_3d, list_data_collate, decollate_batch
+from monai.data import list_data_collate, decollate_batch
 from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
 from monai.transforms import (
     Activations,
-    EnsureChannelFirstd,
     AsDiscrete,
     Compose,
-    LoadImaged,
-    RandCropByPosNegLabeld,
-    RandRotate90d,
-    ScaleIntensityd,
-    Spacingd
 )
 from monai.visualize import plot_2d_or_3d_image
 
@@ -209,7 +197,7 @@ def main(config_name: str = typer.Option('train.yaml', metavar='--config-name'))
 
     artf_pth = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', cfg['run_name'])
     if os.path.exists(artf_pth):
-        print(f'Run with name "{cfg["run_name"]}" already exists. Do you want to erase it? [yN]')
+        print(f'Run with name "{cfg["run_name"]}" already exists. Do you want to erase it? [y/N]')
         to_erase = input().lower()
         if to_erase in ['y', 'yes']:
             shutil.rmtree(artf_pth)

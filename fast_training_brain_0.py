@@ -42,8 +42,8 @@ from monai.transforms import (
 from monai.utils import set_determinism
 
 
-# resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task01_Brain.tar
-data_root = '/root/data/Task01_Brain'
+# resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task01_BrainTumor.tar
+data_root = '/root/data/Task01_BrainTumor'
 outputs_dir = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', 'fast_run_brain_0')
 if os.path.exists(outputs_dir):
     print(f'Run with name "fast_run_brain_0" already exists. Do you want to erase it? [y/N]')

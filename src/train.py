@@ -2,10 +2,8 @@ import glob
 import logging
 import math
 import os
-import random
 import shutil
 import sys
-import tempfile
 import time
 from typing import Dict
 
@@ -16,8 +14,6 @@ from dotenv import load_dotenv
 import torch
 import typer
 from torch.optim import SGD
-from torch.utils.tensorboard import SummaryWriter
-from monai.apps import download_and_extract
 from monai.data import (
     CacheDataset,
     ThreadDataLoader,
@@ -30,21 +26,14 @@ from monai.metrics import DiceMetric
 from monai.networks.layers import Act, Norm
 from monai.networks.nets import UNet
 from monai.transforms import (
-    EnsureChannelFirstd,
     AsDiscrete,
     Compose,
-    CropForegroundd,
-    EnsureTyped,
-    FgBgToIndicesd,
-    LoadImaged,
-    Orientationd,
-    RandCropByPosNegLabeld,
-    ScaleIntensityRanged,
-    Spacingd,
+
 )
 from monai.utils import set_determinism
 
 from src.utils.utils import object_from_dict
+from src.utils.wandb_logger import WandBLogger
 
 
 def create_transform(cfg_transform: Dict):
@@ -153,7 +142,7 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
     val_interval = cfg['val_interval']
 
     artefacts_dir = cfg['artefacts_dir']
-    writer = SummaryWriter(log_dir=os.path.join(artefacts_dir, 'tb'))
+    wandb_logger = WandBLogger(cfg, model)
 
     best_metric = -1
     best_metric_epoch = -1
@@ -198,11 +187,12 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
                 f"{step}/{epoch_len}, train_loss: {loss.item():.4f}"
                 f" step time: {(time.time() - step_start):.4f}"
             )
-            writer.add_scalar("train_loss", loss.item(), epoch_len * epoch + step)
+            wandb_logger.log_scalar('train/loss', loss.item())
 
         epoch_loss /= step
         epoch_loss_values.append(epoch_loss)
         logging.info(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
+        wandb_logger.log_scalar('train/epoch_loss', epoch_loss)
 
         if (epoch + 1) % val_interval == 0:
             model.eval()
@@ -245,7 +235,7 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
                     f" best mean dice: {best_metric:.4f}"
                     f" at epoch: {best_metric_epoch}"
                 )
-                writer.add_scalar("val_mean_dice", metric, epoch + 1)
+                wandb_logger.log_scalar('val/mean_dice', metric)
 
         logging.info(
             f"time consuming of epoch {epoch + 1} is:"
@@ -256,7 +246,7 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
 def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-name')):
     load_dotenv()
 
-    cfg_pth = os.path.join(os.environ['PROJECT_ROOT'], '', 'configs', config_name)
+    cfg_pth = os.path.join(os.environ['PROJECT_ROOT'], 'configs', config_name)
     cfg = OmegaConf.load(cfg_pth)
     cfg = OmegaConf.to_container(cfg, resolve=True)
 

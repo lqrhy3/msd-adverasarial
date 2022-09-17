@@ -246,7 +246,7 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
 def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-name')):
     load_dotenv()
 
-    cfg_pth = os.path.join(os.environ['PROJECT_ROOT'], 'configs', config_name)
+    cfg_pth = os.path.join(os.environ['PROJECT_ROOT'], 'src', 'configs', config_name)
     cfg = OmegaConf.load(cfg_pth)
     cfg = OmegaConf.to_container(cfg, resolve=True)
 

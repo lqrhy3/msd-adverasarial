@@ -37,8 +37,6 @@ from src.utils.wandb_logger import WandBLogger
 
 
 def create_transform(cfg_transform: Dict):
-    cfg_transform = OmegaConf.to_container(cfg_transform, resolve=True)
-
     transform = []
     for cfg_transform_fn in cfg_transform['transform_fns']:
         transform.append(object_from_dict(cfg_transform_fn))
@@ -67,12 +65,12 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
     num_val_samples = int(cfg['val_split'] * len(data_dicts))
     train_files, val_files = data_dicts[:-num_val_samples], data_dicts[-num_val_samples:]
 
+    set_track_meta(True)
     train_transforms = create_transform(cfg['transform']['train'])
     val_transforms = create_transform(cfg['transform']['val'])
 
     train_cache_rate, val_cache_rate = cfg['train_cache_rate'], cfg['val_cache_rate']
-    train_num_workers, val_num_workers = cfg['num_workers'], cfg['num_workers']
-    set_track_meta(True)
+    train_num_workers, val_num_workers = cfg['train_num_workers'], cfg['val_num_workers']
 
     train_ds = CacheDataset(
         data=train_files,
@@ -122,7 +120,8 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
     ).to(device)
 
     # avoid the computation of meta information in random transforms
-    set_track_meta(False)
+    if train_cache_rate == 1. and val_cache_rate == 1:
+        set_track_meta(False)
 
     post_pred = Compose([AsDiscrete(argmax=True, to_onehot=2)])
     post_label = Compose([AsDiscrete(to_onehot=2)])
@@ -215,10 +214,12 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
                             val_inputs, roi_size, sw_batch_size, model
                         )
 
-                    val_outputs = [post_pred(i) for i in decollate_batch(val_outputs)]
-                    val_labels = [post_label(i) for i in decollate_batch(val_labels)]
+                    val_outputs_post = [post_pred(i) for i in decollate_batch(val_outputs)]
+                    val_labels_post = [post_label(i) for i in decollate_batch(val_labels)]
 
-                    dice_metric(y_pred=val_outputs, y=val_labels)
+                    dice_metric(y_pred=val_outputs_post, y=val_labels_post)
+
+                    wandb_logger.log_slices('Val_images', val_inputs, val_outputs, val_labels)
 
                 metric = dice_metric.aggregate().item()
                 dice_metric.reset()
@@ -241,6 +242,7 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
             f"time consuming of epoch {epoch + 1} is:"
             f" {(time.time() - epoch_start):.4f}"
         )
+    wandb_logger.finish()
 
 
 def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-name')):
@@ -250,7 +252,7 @@ def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-
     cfg = OmegaConf.load(cfg_pth)
     cfg = OmegaConf.to_container(cfg, resolve=True)
 
-    artefacts_dir = os.path.join(os.environ['PROJECT_ROOT'], '../artefacts', cfg['run_name'])
+    artefacts_dir = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', cfg['run_name'])
     if os.path.exists(artefacts_dir):
         print(f'Run with name "{cfg["run_name"]}" already exists. Do you want to erase it? [y/N]')
         to_erase = input().lower()
@@ -265,7 +267,7 @@ def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-
     os.makedirs(os.path.join(artefacts_dir, 'snapshots'))
     os.makedirs(os.path.join(artefacts_dir, 'tb'))
 
-    cfg['data_dir'] = os.path.expanduser(cfg['data_dir'])
+    cfg['data_root'] = os.path.expanduser(cfg['data_root'])
     cfg['artefacts_dir'] = artefacts_dir
     OmegaConf.save(cfg, os.path.join(artefacts_dir, 'train_config.yaml'))
 

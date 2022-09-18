@@ -48,7 +48,7 @@ def create_transform(cfg_transform: Dict):
     return transform
 
 
-def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09_Spleen.tar
+def run(cfg):
     data_dir = os.path.join(cfg['data_root'], cfg['task'])
 
     train_images = sorted(
@@ -89,7 +89,7 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
 
     batch_size = cfg['batch_size']
     train_loader = ThreadDataLoader(train_ds, num_workers=0, batch_size=batch_size, shuffle=True)
-    val_loader = ThreadDataLoader(val_ds, num_workers=0, batch_size=1)
+    val_loader = ThreadDataLoader(val_ds, num_workers=0, batch_size=1, shuffle=False)
 
     loss_function = DiceCELoss(
         include_background=False,
@@ -198,7 +198,7 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
             with torch.no_grad():
                 val_loader_iterator = iter(val_loader)
 
-                for _ in range(len(val_loader)):
+                for i in range(len(val_loader)):
                     val_data = next(val_loader_iterator)
                     val_inputs, val_labels = (
                         val_data["image"].to(device),
@@ -218,8 +218,8 @@ def run(cfg): # resource https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09
                     val_labels_post = [post_label(i) for i in decollate_batch(val_labels)]
 
                     dice_metric(y_pred=val_outputs_post, y=val_labels_post)
-
-                    wandb_logger.log_slices('Val_images', val_inputs, val_outputs, val_labels)
+                    if i < 5:
+                        wandb_logger.log_slices('Val_images', val_inputs, val_outputs, val_labels)
 
                 metric = dice_metric.aggregate().item()
                 dice_metric.reset()

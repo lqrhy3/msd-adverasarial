@@ -1,0 +1,50 @@
+run_name: run_1
+sw_batch_size: 4
+val_roi_size: [160, 160, 160]
+device: cuda
+path_to_checkpoint: null
+do_log_locally: false
+do_log_to_wandb: true
+
+data_root: ~/data
+task: Task09_Spleen
+val_split: 0.2
+val_cache_rate: 1.0
+val_num_workers: 5    # only for cache stage
+
+transform:
+  val:
+    compose_fn:
+      type: monai.transforms.Compose
+    transform_fns:
+      - type: monai.transforms.LoadImaged
+        keys: [image, label]
+
+      - type: monai.transforms.EnsureChannelFirstd
+        keys: [image, label]
+
+      - type: monai.transforms.Orientationd
+        keys: [ image, label ]
+        axcodes: RAS
+
+      - type: monai.transforms.Spacingd
+        keys: [image, label]
+        pixdim: [1.5, 1.5, 2.0]
+        mode: [bilinear, nearest]
+
+      - type: monai.transforms.ScaleIntensityRanged
+        keys: [image]
+        a_min: -57
+        a_max: 164
+        b_min: 0.0
+        b_max: 1.0
+        clip: true
+
+      - type: monai.transforms.CropForegroundd
+        keys: [image, label]
+        source_key: image
+
+      - type: monai.transforms.EnsureTyped
+        keys: [image, label]
+        device: ${device}
+        track_meta: false

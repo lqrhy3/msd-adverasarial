@@ -5,13 +5,14 @@ import os
 import shutil
 import sys
 import time
-from typing import Dict
+from typing import Dict, Optional
 
 from omegaconf import OmegaConf
 from datetime import datetime
 from dotenv import load_dotenv
 
 import torch
+from torch.optim import Optimizer
 import typer
 from torch.optim import SGD
 from monai.data import (
@@ -48,6 +49,28 @@ def create_transform(cfg_transform: Dict):
     return transform
 
 
+def save_checkpoint(
+        model: torch.nn.Module,
+        epoch: int,
+        artefacts_dir: str,
+        optimizer: Optional[Optimizer] = None,
+        scheduler=None,
+):
+    state_dict = model.state_dict()
+    save_dict = {'epoch': epoch, "state_dict": state_dict}
+    if optimizer is not None:
+        save_dict['optimizer'] = optimizer.state_dict()
+    if scheduler is not None:
+        save_dict['scheduler'] = scheduler.state_dict()
+
+    snapshot_path = os.path.join(artefacts_dir, 'snapshots')
+    if not os.path.exists(snapshot_path):
+        os.makedirs(snapshot_path)
+
+    filename = os.path.join(snapshot_path, f'best_metric_checkpoint.pt')
+    torch.save(save_dict, filename)
+
+
 def run(cfg):
     data_dir = os.path.join(cfg['data_root'], cfg['task'])
 
@@ -82,7 +105,7 @@ def run(cfg):
     val_ds = CacheDataset(
         data=val_files,
         transform=val_transforms,
-        cache_rate=train_cache_rate,
+        cache_rate=val_cache_rate,
         num_workers=val_num_workers,
         copy_cache=False
     )
@@ -141,7 +164,7 @@ def run(cfg):
     val_interval = cfg['val_interval']
 
     artefacts_dir = cfg['artefacts_dir']
-    wandb_logger = WandBLogger(cfg, model)
+    wandb_logger = WandBLogger(cfg, model, save_config=True)
 
     best_metric = -1
     best_metric_epoch = -1
@@ -205,8 +228,8 @@ def run(cfg):
                         val_data["label"].to(device),
                     )
 
-                    roi_size = (160, 160, 160)
-                    sw_batch_size = 4
+                    roi_size = cfg['val_roi_size']
+                    sw_batch_size = cfg['sw_batch_size']
 
                     # set AMP for MONAI validation
                     with torch.cuda.amp.autocast():
@@ -228,19 +251,19 @@ def run(cfg):
                     best_metric = metric
                     best_metric_epoch = epoch + 1
 
-                    torch.save(model.state_dict(), os.path.join(artefacts_dir, 'snapshots', 'best_metric_model.pt'))
-                    logging.info("saved new best metric model")
+                    save_checkpoint(model, epoch, artefacts_dir, optimizer)
+                    logging.info('saved new best metric model')
                 logging.info(
-                    f"current epoch: {epoch + 1} current"
-                    f" mean dice: {metric:.4f}"
-                    f" best mean dice: {best_metric:.4f}"
-                    f" at epoch: {best_metric_epoch}"
+                    f'current epoch: {epoch + 1} current'
+                    f' mean dice: {metric:.4f}'
+                    f' best mean dice: {best_metric:.4f}'
+                    f' at epoch: {best_metric_epoch}'
                 )
                 wandb_logger.log_scalar('val/mean_dice', metric)
 
         logging.info(
-            f"time consuming of epoch {epoch + 1} is:"
-            f" {(time.time() - epoch_start):.4f}"
+            f'time consuming of epoch {epoch + 1} is:'
+            f' {(time.time() - epoch_start):.4f}'
         )
     wandb_logger.finish()
 

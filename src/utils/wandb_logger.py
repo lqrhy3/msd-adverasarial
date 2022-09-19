@@ -15,6 +15,7 @@ class WandBLogger:
             self,
             cfg: dict,
             model: nn.Module,
+            save_config: bool
     ):
         self.cfg = cfg
         self.run = wandb.init(
@@ -26,13 +27,14 @@ class WandBLogger:
         )
 
         wandb.watch(model, log='all', log_freq=100, log_graph=True)
-        wandb.save(os.path.join(cfg['artefacts_dir'], 'train_config.yaml'), policy='now')
+        if save_config:
+            wandb.save(os.path.join(cfg['artefacts_dir'], 'train_config.yaml'), policy='now')
+
+    def log(self, *args, **kwargs):
+        self.run.log(*args, **kwargs)
 
     def log_scalar(self, name: str, value: float, commit: Optional[bool] = None):
         self.run.log({name: value}, commit=commit)
-
-    def log_image(self):
-        pass
 
     def log_slices(self, name: str, inputs, outputs, labels):
         inputs = inputs.cpu().numpy().squeeze(0)
@@ -44,7 +46,7 @@ class WandBLogger:
         blended_image = np.concatenate([blended_tgt, blended_pred], axis=1)
 
         blended_slices = []
-        num_slices = 30
+        num_slices = 20
         slice_idx_start = blended_image.shape[-1] // 2 - num_slices // 2
         slice_idx_end = slice_idx_start + num_slices + 1
         for slice_idx in range(slice_idx_start, slice_idx_end):

@@ -79,9 +79,9 @@ transform:
 
       - type: monai.transforms.RandGaussianSmoothd
         keys: [image]
-        sigma1_x: [0.5, 1.5]
-        sigma1_y: [0.5, 1.5]
-        sigma1_z: [0.5, 1.5]
+        sigma_x: [0.5, 1.5]
+        sigma_y: [0.5, 1.5]
+        sigma_z: [0.5, 1.5]
         prob: 0.1
 
       - type: monai.transforms.RandScaleIntensityd

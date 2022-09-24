@@ -1,14 +1,14 @@
-run_name: run_2_08 # scheduler + augs
+run_name: run_1_07 # scheduler + augs
 batch_size: 2
-sw_batch_size: 8
+sw_batch_size: 6
 lr: 0.05
 num_epochs: 1000
 val_interval: 50
-val_roi_size: [192, 192, 64]
+val_roi_size: [224, 224, 40]
 device: cuda
 
 data_root: ~/data
-task: Task08_HepaticVessel
+task: Task07_Pancreas
 num_classes: 3
 val_split: 0.2
 train_cache_rate: 1.0
@@ -33,18 +33,18 @@ transform:
 
       - type: monai.transforms.Spacingd
         keys: [image, label]
-        pixdim: [0.8, 0.8, 1.5]
+        pixdim: [0.8, 0.8, 2.5]
         mode: [bilinear, nearest]
 
       - type: src.utils.transforms.ClipIntensityd
         keys: [image]
-        i_min: -3
-        i_max: 243
+        i_min: -96
+        i_max: 215
 
       - type: monai.transforms.NormalizeIntensityd
         keys: [image]
-        subtrahend: 104.37
-        divisor: 52.62
+        subtrahend: 77.99
+        divisor: 75.4
 
       - type: monai.transforms.CropForegroundd
         keys: [image, label]
@@ -79,9 +79,9 @@ transform:
 
       - type: monai.transforms.RandGaussianSmoothd
         keys: [image]
-        sigma_x: [0.5, 1.5]
-        sigma_y: [0.5, 1.5]
-        sigma_z: [0.5, 1.5]
+        sigma1_x: [0.5, 1.5]
+        sigma1_y: [0.5, 1.5]
+        sigma1_z: [0.5, 1.5]
         prob: 0.1
 
       - type: monai.transforms.RandScaleIntensityd
@@ -119,20 +119,20 @@ transform:
         keys: [image, label]
         axcodes: RAS
 
-      - type: monai.transforms.Spacingd
-        keys: [image, label]
-        pixdim: [0.8, 0.8, 1.5]
-        mode: [bilinear, nearest]
+    - type: monai.transforms.Spacingd
+        keys: [ image, label ]
+        pixdim: [ 0.8, 0.8, 2.5 ]
+        mode: [ bilinear, nearest ]
 
-      - type: src.utils.transforms.ClipIntensityd
-        keys: [image]
-        i_min: -3
-        i_max: 243
+    - type: src.utils.transforms.ClipIntensityd
+      keys: [ image ]
+      i_min: -96
+      i_max: 215
 
-      - type: monai.transforms.NormalizeIntensityd
-        keys: [image]
-        subtrahend: 104.37
-        divisor: 52.62
+    - type: monai.transforms.NormalizeIntensityd
+      keys: [ image ]
+      subtrahend: 77.99
+      divisor: 75.4
 
       - type: monai.transforms.CropForegroundd
         keys: [image, label]

@@ -74,10 +74,12 @@ def run(cfg):
     val_loader = ThreadDataLoader(val_ds, num_workers=0, batch_size=1)
 
     device = torch.device(cfg['device'])
+    num_classes = cfg['num_classes']
+
     model = UNet(
         spatial_dims=3,
         in_channels=1,
-        out_channels=2,
+        out_channels=num_classes,
         channels=(32, 64, 128, 256, 512),
         strides=(2, 2, 2, 2),
         num_res_units=2,
@@ -97,8 +99,8 @@ def run(cfg):
     if val_cache_rate == 1:
         set_track_meta(False)
 
-    post_pred = Compose([AsDiscrete(argmax=True, to_onehot=2)])
-    post_label = Compose([AsDiscrete(to_onehot=2)])
+    post_pred = Compose([AsDiscrete(argmax=True, to_onehot=num_classes)])
+    post_label = Compose([AsDiscrete(to_onehot=num_classes)])
 
     dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=False)
 

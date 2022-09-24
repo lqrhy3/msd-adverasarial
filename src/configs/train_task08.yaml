@@ -1,4 +1,4 @@
-run_name: run_1_08 # high res nnunet preprocessing
+run_name: run_2_08 # scheduler + augs
 batch_size: 2
 sw_batch_size: 8
 lr: 0.05

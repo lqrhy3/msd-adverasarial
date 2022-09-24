@@ -1,4 +1,4 @@
-run_name: run_1_08 # low res nnunet preprocessing
+run_name: run_1_08 # high res nnunet preprocessing
 batch_size: 2
 sw_batch_size: 4
 lr: 0.2
@@ -33,7 +33,7 @@ transform:
 
       - type: monai.transforms.Spacingd
         keys: [image, label]
-        pixdim: [1.29, 1.29, 2.42]
+        pixdim: [0.8, 0.8, 1.5]
         mode: [bilinear, nearest]
 
       - type: src.utils.transforms.ClipIntensityd
@@ -88,7 +88,7 @@ transform:
 
       - type: monai.transforms.Spacingd
         keys: [image, label]
-        pixdim: [1.29, 1.29, 2.42]
+        pixdim: [0.8, 0.8, 1.5]
         mode: [bilinear, nearest]
 
       - type: src.utils.transforms.ClipIntensityd

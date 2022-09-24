@@ -34,21 +34,9 @@ from monai.transforms import (
 )
 from monai.utils import set_determinism
 
-from src.utils.utils import object_from_dict
+from src.utils.utils import create_transform
 from src.utils.wandb_logger import WandBLogger
 import wandb
-
-
-def create_transform(cfg_transform: Dict):
-    transform = []
-    for cfg_transform_fn in cfg_transform['transform_fns']:
-        transform.append(object_from_dict(cfg_transform_fn))
-
-    _Compose = object_from_dict(cfg_transform['compose_fn'])
-    if _Compose is not None:
-        transform = _Compose.__class__(transform)
-
-    return transform
 
 
 def run(cfg):

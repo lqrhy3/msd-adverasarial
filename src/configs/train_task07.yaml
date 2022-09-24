@@ -120,9 +120,9 @@ transform:
         axcodes: RAS
 
       - type: monai.transforms.Spacingd
-          keys: [ image, label ]
-          pixdim: [ 0.8, 0.8, 2.5 ]
-          mode: [ bilinear, nearest ]
+        keys: [ image, label ]
+        pixdim: [ 0.8, 0.8, 2.5 ]
+        mode: [ bilinear, nearest ]
 
       - type: src.utils.transforms.ClipIntensityd
         keys: [ image ]

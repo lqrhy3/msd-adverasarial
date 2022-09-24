@@ -119,20 +119,20 @@ transform:
         keys: [image, label]
         axcodes: RAS
 
-    - type: monai.transforms.Spacingd
-        keys: [ image, label ]
-        pixdim: [ 0.8, 0.8, 2.5 ]
-        mode: [ bilinear, nearest ]
+      - type: monai.transforms.Spacingd
+          keys: [ image, label ]
+          pixdim: [ 0.8, 0.8, 2.5 ]
+          mode: [ bilinear, nearest ]
 
-    - type: src.utils.transforms.ClipIntensityd
-      keys: [ image ]
-      i_min: -96
-      i_max: 215
+      - type: src.utils.transforms.ClipIntensityd
+        keys: [ image ]
+        i_min: -96
+        i_max: 215
 
-    - type: monai.transforms.NormalizeIntensityd
-      keys: [ image ]
-      subtrahend: 77.99
-      divisor: 75.4
+      - type: monai.transforms.NormalizeIntensityd
+        keys: [ image ]
+        subtrahend: 77.99
+        divisor: 75.4
 
       - type: monai.transforms.CropForegroundd
         keys: [image, label]

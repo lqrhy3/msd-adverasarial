@@ -34,6 +34,7 @@ from monai.transforms import (
 from monai.utils import set_determinism
 
 from src.utils.utils import create_transform, save_checkpoint
+from src.utils.poly_lr_scheduler import PolynomialLRDecay
 from src.utils.wandb_logger import WandBLogger
 
 
@@ -118,17 +119,23 @@ def run(cfg):
 
     dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=False)
 
+    num_epochs = cfg['num_epochs']
+    val_interval = cfg['val_interval']
     lr = cfg['lr']
+
     optimizer = SGD(
         model.parameters(),
         lr=lr,
-        momentum=0.9,
+        momentum=0.95,
         weight_decay=0.00004,
     )
-    scaler = torch.cuda.amp.GradScaler()
 
-    num_epochs = cfg['num_epochs']
-    val_interval = cfg['val_interval']
+    scheduler = PolynomialLRDecay(
+        optimizer,
+        max_decay_steps=num_epochs,
+        power=0.9
+    )
+    scaler = torch.cuda.amp.GradScaler()
 
     artefacts_dir = cfg['artefacts_dir']
     wandb_logger = WandBLogger(cfg, model, save_config=True)
@@ -178,10 +185,13 @@ def run(cfg):
             )
             wandb_logger.log_scalar('train/loss', loss.item())
 
+        scheduler.step()
+
         epoch_loss /= step
         epoch_loss_values.append(epoch_loss)
         logging.info(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
         wandb_logger.log_scalar('train/epoch_loss', epoch_loss)
+        wandb_logger.log_scalar('train/lr', scheduler.get_lr()[0])
 
         if (epoch + 1) % val_interval == 0:
             model.eval()

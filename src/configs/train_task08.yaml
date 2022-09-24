@@ -1,0 +1,116 @@
+run_name: run_1_08 # low res nnunet preprocessing
+batch_size: 2
+sw_batch_size: 4
+lr: 0.2
+num_epochs: 600
+val_interval: 50
+val_roi_size: [192, 192, 64]
+device: cuda
+
+data_root: ~/data
+task: Task08_HepaticVessel
+val_split: 0.2
+train_cache_rate: 1.0
+val_cache_rate: 1.0
+train_num_workers: 8  # only for cache stage
+val_num_workers: 5    # only for cache stage
+
+transform:
+  train:
+    compose_fn:
+      type: monai.transforms.Compose
+    transform_fns:
+      - type: monai.transforms.LoadImaged
+        keys: [image, label]
+
+      - type: monai.transforms.EnsureChannelFirstd
+        keys: [image, label]
+
+      - type: monai.transforms.Orientationd
+        keys: [image, label]
+        axcodes: RAS
+
+      - type: monai.transforms.Spacingd
+        keys: [image, label]
+        pixdim: [1.29, 1.29, 2.42]
+        mode: [bilinear, nearest]
+
+      - type: src.utils.transforms.ClipIntensityd
+        keys: [image]
+        i_min: -3
+        i_max: 243
+
+      - type: monai.transforms.NormalizeIntensityd
+        keys: [image]
+        subtrahend: 104.37
+        divisor: 52.62
+
+      - type: monai.transforms.CropForegroundd
+        keys: [image, label]
+        source_key: image
+
+      - type: monai.transforms.FgBgToIndicesd
+        keys: label
+        fg_postfix: _fg
+        bg_postfix: _bg
+        image_key: image
+
+      - type: monai.transforms.EnsureTyped
+        keys: [image, label]
+        device: ${device}
+        track_meta: false
+
+      - type: monai.transforms.RandCropByPosNegLabeld
+        keys: [image, label]
+        label_key: label
+        spatial_size: [192, 192, 64]
+        pos: 3
+        neg: 1
+        num_samples: 4
+        fg_indices_key: label_fg
+        bg_indices_key: label_bg
+
+
+  val:
+    compose_fn:
+      type: monai.transforms.Compose
+    transform_fns:
+      - type: monai.transforms.LoadImaged
+        keys: [image, label]
+
+      - type: monai.transforms.EnsureChannelFirstd
+        keys: [image, label]
+
+      - type: monai.transforms.Orientationd
+        keys: [image, label]
+        axcodes: RAS
+
+      - type: monai.transforms.Spacingd
+        keys: [image, label]
+        pixdim: [1.29, 1.29, 2.42]
+        mode: [bilinear, nearest]
+
+      - type: src.utils.transforms.ClipIntensityd
+        keys: [image]
+        i_min: -3
+        i_max: 243
+
+      - type: monai.transforms.NormalizeIntensityd
+        keys: [image]
+        subtrahend: 104.37
+        divisor: 52.62
+
+      - type: monai.transforms.CropForegroundd
+        keys: [image, label]
+        source_key: image
+
+      - type: monai.transforms.FgBgToIndicesd
+        keys: label
+        fg_postfix: _fg
+        bg_postfix: _bg
+        image_key: image
+
+      - type: monai.transforms.EnsureTyped
+        keys: [image, label]
+        device: ${device}
+        track_meta: false

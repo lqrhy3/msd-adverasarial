@@ -72,8 +72,7 @@ def run(cfg):
     ]
 
     num_val_samples = int(cfg['val_split'] * len(data_dicts))
-    # train_files, val_files = data_dicts[:-num_val_samples], data_dicts[-num_val_samples:]
-    train_files, val_files = data_dicts[:6], data_dicts[6:7]
+    train_files, val_files = data_dicts[:-num_val_samples], data_dicts[-num_val_samples:]
 
     set_track_meta(True)
     train_transforms = create_transform(cfg['transform']['train'])

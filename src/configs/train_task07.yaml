@@ -1,10 +1,10 @@
 run_name: run_1_07 # scheduler + augs
-batch_size: 4
-sw_batch_size: 4
+batch_size: 2
+sw_batch_size: 2
 lr: 0.05
 num_epochs: 1000
 val_interval: 50
-val_roi_size: [224, 224, 40]
+val_roi_size: [224, 224, 64]
 device: cuda
 
 data_root: ~/data
@@ -64,7 +64,7 @@ transform:
       - type: monai.transforms.RandCropByPosNegLabeld
         keys: [image, label]
         label_key: label
-        spatial_size: [224, 224, 40]
+        spatial_size: [224, 224, 64]
         pos: 2
         neg: 1
         num_samples: 4
@@ -107,7 +107,7 @@ transform:
 
       - type: monai.transforms.SpatialPadd
         keys: [ image, label ]
-        spatial_size: [ 224, 224, 40 ]
+        spatial_size: [ 224, 224, 64 ]
 
 
   val:

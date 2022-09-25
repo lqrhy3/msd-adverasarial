@@ -50,7 +50,7 @@ def get_adversarial_input(inputs, xi):
 
 def get_adversarial_label(labels, strategy: str = 'zeros'):
     if strategy == 'zeros':
-        labels_adv = torch.zeros_like(labels)
+        labels_adv = torch.zeros_like(labels, device=labels.device)
     else:
         raise ValueError
 
@@ -140,7 +140,7 @@ def run(cfg):
 
     xi_norm = cfg['xi_norm']
     alpha = cfg['alpha']
-    xi = torch.zeros((1, 96, 96, 96), dtype=torch.float32)
+    xi = torch.zeros((1, 96, 96, 96), dtype=torch.float32, device=device)
 
     for epoch in range(num_epochs):
         epoch_start = time.time()

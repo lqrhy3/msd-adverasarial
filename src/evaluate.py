@@ -102,12 +102,15 @@ def run(cfg):
     post_pred = Compose([AsDiscrete(argmax=True, to_onehot=num_classes)])
     post_label = Compose([AsDiscrete(to_onehot=num_classes)])
 
-    dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=False)
+    metrics_dict = {
+        'dice': DiceMetric(include_background=False, reduction='mean', get_not_nans=False),
+        'dice_bg': DiceMetric(include_background=True, reduction='mean', get_not_nans=False)
+    }
 
     do_log_to_wandb = cfg['do_log_to_wandb']
     if do_log_to_wandb:
         wandb_logger = WandBLogger(cfg, model, save_config=False)
-        columns = ['эfilename', 'image', 'ground_truth', 'prediction']
+        columns = ['filename', 'image', 'ground_truth', 'prediction']
         table = wandb.Table(columns=columns)
     else:
         wandb_logger = None
@@ -119,8 +122,7 @@ def run(cfg):
     with torch.no_grad():
         val_loader_iterator = iter(val_loader)
 
-        # for i in range(len(val_loader)):
-        for i in range(2):#len(val_loader)):
+        for i in range(len(val_loader)):
             val_data = next(val_loader_iterator)
             val_inputs, val_labels = (
                 val_data['image'].to(device),
@@ -139,9 +141,15 @@ def run(cfg):
             val_outputs_post = [post_pred(i) for i in decollate_batch(val_outputs)]
             val_labels_post = [post_label(i) for i in decollate_batch(val_labels)]
 
-            sample_metric = dice_metric(y_pred=val_outputs_post, y=val_labels_post)
+            sample_metrics = dict()
+            for name, metric in metrics_dict.items():
+                sample_metrics[name] = metric(y_pred=val_outputs_post, y=val_labels_post)
+
             image_name = os.path.split(val_loader.dataset.data[i]['image'])[-1].split('.')[0]
-            logging.info(f'Filename: {image_name} | Metric value: {round(sample_metric.item(), 5)}')
+            msg = f'Filename: {image_name}'
+            for name, metric_value in sample_metrics.items():
+                msg += f' | {name.capitalize()} value: {round(metric_value.item(), 5)}'
+            logging.info(msg)
             if do_log_to_wandb or do_log_locally:
                 num_slices = 20
                 slice_idx_start = val_inputs.shape[-1] // 2 - num_slices // 2
@@ -182,10 +190,13 @@ def run(cfg):
                             ),
                             prediction
                         )
-
-        metric = dice_metric.aggregate().item()
         logging.info('-' * 15)
-        logging.info(f'Mean metric value: {metric}')
+        msg = ''
+        for name, metric in metrics_dict.items():
+            metric_mean = metric.aggregate().item()
+            metric.reset()
+            msg += f'Mean {name} value: {round(metric_mean, 5)}'
+        logging.info(msg)
 
     if do_log_to_wandb:
         wandb_logger.log({'val_predictions': table})

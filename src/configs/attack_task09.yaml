@@ -1,0 +1,117 @@
+run_name: attack_1
+batch_size: 2
+sw_batch_size: 4
+num_epochs: 100
+val_interval: 1
+val_roi_size: [96, 96, 96]
+device: cuda
+
+xi_norm: 0.5
+alpha: 0.005
+path_to_checkpoint: /root/snapshots/run_1/best_metric_checkpoint.pt
+
+data_root: ~/data
+task: Task09_Spleen
+num_classes: 2
+val_split: 0.2
+train_cache_rate: 1.0
+val_cache_rate: 1.0
+train_num_workers: 8  # only for cache stage
+val_num_workers: 5    # only for cache stage
+
+transform:
+  train:
+    compose_fn:
+      type: monai.transforms.Compose
+    transform_fns:
+      - type: monai.transforms.LoadImaged
+        keys: [image, label]
+
+      - type: monai.transforms.EnsureChannelFirstd
+        keys: [image, label]
+
+      - type: monai.transforms.Orientationd
+        keys: [image, label]
+        axcodes: RAS
+
+      - type: monai.transforms.Spacingd
+        keys: [image, label]
+        pixdim: [1.5, 1.5, 2.0]
+        mode: [bilinear, nearest]
+
+      - type: monai.transforms.ScaleIntensityRanged
+        keys: [image]
+        a_min: -57
+        a_max: 164
+        b_min: 0.0
+        b_max: 1.0
+        clip: true
+
+      - type: monai.transforms.CropForegroundd
+        keys: [image, label]
+        source_key: image
+
+#      - type: monai.transforms.FgBgToIndicesd
+#        keys: label
+#        fg_postfix: _fg
+#        bg_postfix: _bg
+#        image_key: image
+
+      - type: monai.transforms.EnsureTyped
+        keys: [image, label]
+        device: cpu #${device}
+        track_meta: false
+
+      - type: monai.transforms.CenterSpatialCropd
+        keys: [image, label]
+        roi_size: [96, 96, 96]
+#      - type: monai.transforms.RandCropByPosNegLabeld
+#        keys: [image, label]
+#        label_key: label
+#        spatial_size: [96, 96, 96]
+#        pos: 3
+#        neg: 1
+#        num_samples: 4
+#        fg_indices_key: label_fg
+#        bg_indices_key: label_bg
+
+
+  val:
+    compose_fn:
+      type: monai.transforms.Compose
+    transform_fns:
+      - type: monai.transforms.LoadImaged
+        keys: [image, label]
+
+      - type: monai.transforms.EnsureChannelFirstd
+        keys: [image, label]
+
+      - type: monai.transforms.Orientationd
+        keys: [ image, label ]
+        axcodes: RAS
+
+      - type: monai.transforms.Spacingd
+        keys: [image, label]
+        pixdim: [1.5, 1.5, 2.0]
+        mode: [bilinear, nearest]
+
+      - type: monai.transforms.ScaleIntensityRanged
+        keys: [image]
+        a_min: -57
+        a_max: 164
+        b_min: 0.0
+        b_max: 1.0
+        clip: true
+
+      - type: monai.transforms.CropForegroundd
+        keys: [image, label]
+        source_key: image
+
+      - type: monai.transforms.EnsureTyped
+        keys: [image, label]
+        device: cpu #${device}
+        track_meta: false
+
+      - type: monai.transforms.CenterSpatialCropd
+        keys: [ image, label ]
+        roi_size: [ 96, 96, 96 ]

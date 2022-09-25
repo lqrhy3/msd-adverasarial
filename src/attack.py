@@ -7,6 +7,7 @@ import sys
 import time
 from typing import Dict, Optional
 
+import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
 from datetime import datetime
 from dotenv import load_dotenv
@@ -22,20 +23,38 @@ from monai.data import (
     set_track_meta,
 )
 from monai.inferers import sliding_window_inference
-from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks.layers import Act, Norm
 from monai.networks.nets import UNet
 from monai.transforms import (
     AsDiscrete,
     Compose,
-
 )
 from monai.utils import set_determinism
 
-from src.utils.utils import create_transform, save_checkpoint
-from src.utils.poly_lr_scheduler import PolynomialLRDecay
+from src.utils.utils import create_transform, load_checkpoint
+from src.utils.cross_entropy_loss import CrossEntropyLossAdv
 from src.utils.wandb_logger import WandBLogger
+
+
+def get_adversarial_input(inputs, xi):
+    inputs_adv = []
+    for input_ in inputs:
+        min_, max_ = input_.min(), input_.max()
+        inputs_adv.append(
+            torch.clamp(input_ + xi, min_, max_).unsqueeze(0)
+        )
+
+    return torch.cat(inputs_adv, dim=0)
+
+
+def get_adversarial_label(labels, strategy: str = 'zeros'):
+    if strategy == 'zeros':
+        labels_adv = torch.zeros_like(labels)
+    else:
+        raise ValueError
+
+    return labels_adv
 
 
 def run(cfg):
@@ -53,7 +72,8 @@ def run(cfg):
     ]
 
     num_val_samples = int(cfg['val_split'] * len(data_dicts))
-    train_files, val_files = data_dicts[:2], data_dicts[2:3]
+    # train_files, val_files = data_dicts[:-num_val_samples], data_dicts[-num_val_samples:]
+    train_files, val_files = data_dicts[:6], data_dicts[6:7]
 
     set_track_meta(True)
     train_transforms = create_transform(cfg['transform']['train'])
@@ -81,17 +101,7 @@ def run(cfg):
     train_loader = ThreadDataLoader(train_ds, num_workers=0, batch_size=batch_size, shuffle=True)
     val_loader = ThreadDataLoader(val_ds, num_workers=0, batch_size=1, shuffle=False)
 
-    loss_function = DiceCELoss(
-        include_background=False,
-        to_onehot_y=True,
-        softmax=True,
-        squared_pred=True,
-        batch=True,
-        smooth_nr=0.00001,
-        smooth_dr=0.00001,
-        lambda_dice=0.5,
-        lambda_ce=0.5,
-    )
+    loss_function = CrossEntropyLossAdv()
 
     device = torch.device(cfg['device'])
     num_classes = cfg['num_classes']
@@ -110,74 +120,55 @@ def run(cfg):
         bias=True,
     ).to(device)
 
-    # avoid the computation of meta information in random transforms
-    if False and train_cache_rate == 1. and val_cache_rate == 1:
-        set_track_meta(False)
+    path_to_checkpoint = cfg['path_to_checkpoint']
+    load_checkpoint(model, path_to_checkpoint, device)
 
     post_pred = Compose([AsDiscrete(argmax=True, to_onehot=num_classes)])
     post_label = Compose([AsDiscrete(to_onehot=num_classes)])
 
-    metrics_dict = {
-        'dice': DiceMetric(include_background=False, reduction='mean', get_not_nans=False),
-        'dice_bg': DiceMetric(include_background=True, reduction='mean', get_not_nans=False)
-    }
+    dice_metric = DiceMetric(include_background=True, reduction="mean", get_not_nans=False)
 
     num_epochs = cfg['num_epochs']
     val_interval = cfg['val_interval']
-    lr = cfg['lr']
 
-    optimizer = SGD(
-        model.parameters(),
-        lr=lr,
-        momentum=0.95,
-        weight_decay=0.00004,
-    )
-
-    scheduler = PolynomialLRDecay(
-        optimizer,
-        max_decay_steps=num_epochs,
-        power=0.9
-    )
-    scaler = torch.cuda.amp.GradScaler()
+    # wandb_logger = WandBLogger(cfg, model, save_config=True)
 
     artefacts_dir = cfg['artefacts_dir']
-    wandb_logger = WandBLogger(cfg, model, save_config=True)
-
     best_metric = -1
     best_metric_epoch = -1
     epoch_loss_values = []
+    metric_values = []
+
+    xi_norm = cfg['xi_norm']
+    alpha = cfg['alpha']
+    xi = torch.zeros((1, 96, 96, 96), dtype=torch.float32)
 
     for epoch in range(num_epochs):
         epoch_start = time.time()
         logging.info("-" * 10)
         logging.info(f"epoch {epoch + 1}/{num_epochs}")
 
-        model.train()
+        model.eval()
         epoch_loss = 0
-        train_loader_iterator = iter(train_loader)
 
-        # using step instead of iterate through train_loader directly to track data loading time
-        # steps are 1-indexed for printing and calculation purposes
-        for step in range(1, len(train_loader) + 1):
+        inputs_grad = 0.
+        for step, batch_data in enumerate(train_loader, 1):
             step_start = time.time()
-
-            batch_data = next(train_loader_iterator)
             inputs, labels = (
-                batch_data["image"].to(device),
-                batch_data["label"].to(device),
+                batch_data['image'].to(device),
+                batch_data['label'].to(device),
             )
 
-            optimizer.zero_grad()
-            # set AMP for MONAI training
-            # profiling: forward
-            with torch.cuda.amp.autocast():
-                outputs = model(inputs)
-                loss = loss_function(outputs, labels)
+            inputs.requires_grad = True
+            inputs_adv = get_adversarial_input(inputs, xi)
+            labels_adv = get_adversarial_label(labels)
+            outputs = model(inputs_adv)
 
-            scaler.scale(loss).backward()
+            loss = loss_function(outputs, labels_adv)
+            model.zero_grad()
+            loss.backward()
 
-            scaler.step(optimizer)
-            scaler.update()
+            inputs_grad += inputs.grad.data
 
             epoch_loss += loss.item()
             epoch_len = math.ceil(len(train_ds) / train_loader.batch_size)
@@ -185,82 +176,67 @@ def run(cfg):
                 f"{step}/{epoch_len}, train_loss: {loss.item():.4f}"
                 f" step time: {(time.time() - step_start):.4f}"
             )
-            wandb_logger.log_scalar('train/loss', loss.item())
+            # wandb_logger.log_scalar('train/loss', loss.item())
 
-        scheduler.step()
+        inputs_grad = inputs_grad.sum(0)
+        xi = torch.clamp(xi - alpha * torch.sign(inputs_grad), -xi_norm, xi_norm)
 
         epoch_loss /= step
         epoch_loss_values.append(epoch_loss)
         logging.info(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
-        wandb_logger.log_scalar('train/epoch_loss', epoch_loss)
-        wandb_logger.log_scalar('train/lr', scheduler.get_lr()[0])
+        # wandb_logger.log_scalar('train/epoch_loss', epoch_loss)
 
         if (epoch + 1) % val_interval == 0:
             model.eval()
             with torch.no_grad():
-                val_loader_iterator = iter(val_loader)
-
-                for i in range(len(val_loader)):
-                    val_data = next(val_loader_iterator)
+                for i, val_data in enumerate(val_loader, 1):
                     val_inputs, val_labels = (
-                        val_data["image"].to(device),
-                        val_data["label"].to(device),
+                        val_data['image'].to(device),
+                        val_data['label'].to(device),
                     )
+
+                    val_inputs_adv = get_adversarial_input(val_inputs, xi)
+                    val_labels_adv = get_adversarial_label(val_labels)
 
                     roi_size = cfg['val_roi_size']
                     sw_batch_size = cfg['sw_batch_size']
 
-                    # set AMP for MONAI validation
-                    with torch.cuda.amp.autocast():
-                        val_outputs = sliding_window_inference(
-                            val_inputs, roi_size, sw_batch_size, model,
-                            mode='gaussian'
-                        )
+                    val_outputs = sliding_window_inference(
+                        val_inputs_adv, roi_size, sw_batch_size, model
+                    )
 
                     val_outputs_post = [post_pred(i) for i in decollate_batch(val_outputs)]
-                    val_labels_post = [post_label(i) for i in decollate_batch(val_labels)]
+                    val_labels_post = [post_label(i) for i in decollate_batch(val_labels_adv)]
 
-                    for _, metric in metrics_dict.items():
-                        metric(y_pred=val_outputs_post, y=val_labels_post)
+                    dice_metric(y_pred=val_outputs_post, y=val_labels_post)
+                    # if i < 5:
+                    #     wandb_logger.log_slices('Val_images', val_inputs, val_outputs, val_labels)
 
-                    if i < 5:
-                        wandb_logger.log_slices('Val_images', val_inputs, val_outputs, val_labels)
-
-                metric_values_dict = dict()
-                for name, metric_fn in metrics_dict.items():
-                    metric_values_dict[name] = metric_fn.aggregate().item()
-                    metric_fn.reset()
-
-                if metric_values_dict['dice'] > best_metric:
-                    best_metric = metric_values_dict['dice']
+                metric = dice_metric.aggregate().item()
+                dice_metric.reset()
+                metric_values.append(metric)
+                if metric > best_metric:
+                    best_metric = metric
                     best_metric_epoch = epoch + 1
-
-                    save_checkpoint(model, epoch, artefacts_dir, optimizer)
-                    logging.info('saved new best metric model')
-
+                    torch.save(xi, os.path.join(artefacts_dir, 'best_perturbation.pt'))
+                    # save_checkpoint(model, epoch, artefacts_dir, optimizer)
+                    logging.info('saved new best perturbation')
                 logging.info(
                     f'current epoch: {epoch + 1} current'
-                    f' mean dice: {metric_values_dict["dice"]:.4f}'
+                    f' mean dice: {metric:.4f}'
                     f' best mean dice: {best_metric:.4f}'
                     f' at epoch: {best_metric_epoch}'
                 )
-                wandb_logger.log_scalar('val/mean_dice', metric_values_dict['dice'])
-                del metric_values_dict['dice']
-
-                msg = ''
-                for name, metric_value in metric_values_dict.items():
-                    msg += f'Mean {name} value: {round(metric_value, 5)} | '
-                    wandb_logger.log_scalar(f'val/mean_{name}', metric_value)
-                logging.info(msg)
+                # wandb_logger.log_scalar('val/mean_dice', metric)
 
         logging.info(
             f'time consuming of epoch {epoch + 1} is:'
             f' {(time.time() - epoch_start):.4f}'
         )
-    wandb_logger.finish()
+    # wandb_logger.finish()
 
 
-def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-name')):
+def main(config_name: str = typer.Option('attack_task09.yaml', metavar='--config-name')):
     load_dotenv()
 
     cfg_pth = os.path.join(os.environ['PROJECT_ROOT'], 'src', 'configs', config_name)
@@ -269,7 +245,7 @@ def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-
 
     artefacts_dir = os.path.join(os.environ['PROJECT_ROOT'], 'artefacts', cfg['run_name'])
     if os.path.exists(artefacts_dir):
-        print(f'Run with name "{cfg["run_name"]}" already exists. Do you want to erase it? [y/N]')
+        print(f'Attack with name "{cfg["run_name"]}" already exists. Do you want to erase it? [y/N]')
         to_erase = input().lower()
         if to_erase in ['y', 'yes']:
             shutil.rmtree(artefacts_dir)
@@ -283,7 +259,7 @@ def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-
 
     cfg['data_root'] = os.path.expanduser(cfg['data_root'])
     cfg['artefacts_dir'] = artefacts_dir
-    OmegaConf.save(cfg, os.path.join(artefacts_dir, 'train_config.yaml'))
+    OmegaConf.save(cfg, os.path.join(artefacts_dir, 'attack_config.yaml'))
 
     logging.basicConfig(
         level=logging.INFO,
@@ -297,7 +273,6 @@ def main(config_name: str = typer.Option('train_task09.yaml', metavar='--config-
 
     set_determinism(seed=42)
     run(cfg)
-
 
 if __name__ == '__main__':
     typer.run(main)

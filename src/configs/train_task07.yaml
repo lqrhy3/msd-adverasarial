@@ -1,5 +1,5 @@
 run_name: run_1_07 # scheduler + augs
-batch_size: 6
+batch_size: 4
 sw_batch_size: 4
 lr: 0.05
 num_epochs: 1000
@@ -64,12 +64,13 @@ transform:
       - type: monai.transforms.RandCropByPosNegLabeld
         keys: [image, label]
         label_key: label
-        spatial_size: [192, 192, 64]
+        spatial_size: [224, 224, 40]
         pos: 2
         neg: 1
         num_samples: 4
         fg_indices_key: label_fg
         bg_indices_key: label_bg
+        allow_smaller: true
 
       - type: monai.transforms.RandGaussianNoised
         keys: [image]
@@ -103,6 +104,10 @@ transform:
         keys: [image, label]
         spatial_axis: 2
         prob: 0.5
+
+      - type: monai.transforms.SpatialPadd
+        keys: [ image, label ]
+        spatial_size: [ 224, 224, 40 ]
 
 
   val:

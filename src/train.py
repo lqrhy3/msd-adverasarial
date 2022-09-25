@@ -211,7 +211,8 @@ def run(cfg):
                     # set AMP for MONAI validation
                     with torch.cuda.amp.autocast():
                         val_outputs = sliding_window_inference(
-                            val_inputs, roi_size, sw_batch_size, model
+                            val_inputs, roi_size, sw_batch_size, model,
+                            mode='gaussian'
                         )
 
                     val_outputs_post = [post_pred(i) for i in decollate_batch(val_outputs)]
